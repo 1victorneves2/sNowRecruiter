@@ -1,1 +1,1 @@
-web: node src/app.js
+web: npx prisma generate && npx prisma db push --accept-data-loss && node src/app.js
