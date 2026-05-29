@@ -4,7 +4,7 @@
   "description": "sNowRecruiter - Backend API",
   "main": "src/app.js",
   "scripts": {
-    "start": "node src/app.js",
+    "start": "npm run prisma:generate && npm run prisma:push && node src/app.js",
     "dev": "nodemon src/app.js",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate deploy",
