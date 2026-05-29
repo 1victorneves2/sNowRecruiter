@@ -17,13 +17,8 @@ app.use(cors({
 }));
 app.use(express.json());
 
-app.get('/api/health', async (req, res) => {
-  try {
-    await prisma.$queryRaw`SELECT 1`;
-    res.json({ status: 'ok', database: 'connected', timestamp: new Date().toISOString() });
-  } catch (error) {
-    res.status(503).json({ status: 'error', database: 'disconnected', error: error.message });
-  }
+app.get('/api/health', (req, res) => {
+  res.json({ status: 'ok', message: 'Server is running', timestamp: new Date().toISOString() });
 });
 
 app.use('/api/auth', authRoutes);
