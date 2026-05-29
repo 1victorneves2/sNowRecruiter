@@ -1,14 +1,13 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { loginCompany, getJobs, getCandidates, createJob, updateCandidateStatus } from '@/utils/api';
 
-const STATUS_CONFIG = {
-  RECEBIDO:   { bg: '#fef3c7', color: '#92400e' },
-  EM_ANALISE: { bg: '#dbeafe', color: '#1d4ed8' },
-  ENTREVISTA: { bg: '#ede9fe', color: '#7c3aed' },
-  CONTRATADO: { bg: '#d1fae5', color: '#059669' },
-  REPROVADO:  { bg: '#fee2e2', color: '#dc2626' },
+const STATUS_BADGE = {
+  RECEBIDO:   'badge badge-warning',
+  EM_ANALISE: 'badge badge-info',
+  ENTREVISTA: 'badge badge-purple',
+  CONTRATADO: 'badge badge-success',
+  REPROVADO:  'badge badge-error',
 };
 
 export default function Dashboard() {
@@ -18,17 +17,19 @@ export default function Dashboard() {
   const [jobs, setJobs] = useState([]);
   const [candidates, setCandidates] = useState([]);
   const [loading, setLoading] = useState(false);
-  const [dataLoading, setDataLoading] = useState(false);
   const [error, setError] = useState('');
-  const [newJob, setNewJob] = useState({
+  const [formData, setFormData] = useState({
     title: '',
     description: '',
     requirements: '',
+    location: '',
     salary: '',
     modality: 'PRESENCIAL',
-    location: '',
   });
 
+  const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000/api';
+
+  // Restaura sessão ao recarregar a página
   useEffect(() => {
     const saved = localStorage.getItem('token');
     if (saved) {
@@ -42,30 +43,35 @@ export default function Dashboard() {
     setLoading(true);
     setError('');
     try {
-      const data = await loginCompany(email, password);
+      const res = await fetch(`${API_URL}/auth/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Erro ao fazer login');
       setToken(data.token);
       localStorage.setItem('token', data.token);
       loadData(data.token);
     } catch (err) {
-      setError('Erro ao fazer login: ' + err.message);
+      setError(err.message);
     } finally {
       setLoading(false);
     }
   };
 
   const loadData = async (authToken) => {
-    setDataLoading(true);
     try {
-      const [jobsData, candidatesData] = await Promise.all([
-        getJobs(authToken),
-        getCandidates(authToken),
+      const [jobsRes, candRes] = await Promise.all([
+        fetch(`${API_URL}/jobs`, { headers: { Authorization: `Bearer ${authToken}` } }),
+        fetch(`${API_URL}/candidates`, { headers: { Authorization: `Bearer ${authToken}` } }),
       ]);
+      const jobsData = await jobsRes.json();
+      const candData = await candRes.json();
       setJobs(jobsData.jobs || []);
-      setCandidates(candidatesData.candidates || []);
+      setCandidates(candData.candidates || []);
     } catch (err) {
-      setError('Erro ao carregar dados: ' + err.message);
-    } finally {
-      setDataLoading(false);
+      setError(err.message);
     }
   };
 
@@ -74,11 +80,20 @@ export default function Dashboard() {
     setLoading(true);
     setError('');
     try {
-      await createJob(token, newJob);
-      setNewJob({ title: '', description: '', requirements: '', salary: '', modality: 'PRESENCIAL', location: '' });
+      const res = await fetch(`${API_URL}/jobs`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify(formData),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Erro ao criar vaga');
+      setFormData({ title: '', description: '', requirements: '', location: '', salary: '', modality: 'PRESENCIAL' });
       loadData(token);
     } catch (err) {
-      setError('Erro ao criar vaga: ' + err.message);
+      setError(err.message);
     } finally {
       setLoading(false);
     }
@@ -86,7 +101,18 @@ export default function Dashboard() {
 
   const handleStatusChange = async (candidateId, newStatus) => {
     try {
-      await updateCandidateStatus(token, candidateId, newStatus);
+      const res = await fetch(`${API_URL}/candidates/${candidateId}/status`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ status: newStatus }),
+      });
+      if (!res.ok) {
+        const d = await res.json();
+        throw new Error(d.error);
+      }
       setCandidates((prev) =>
         prev.map((c) => (c.id === candidateId ? { ...c, status: newStatus } : c))
       );
@@ -95,23 +121,16 @@ export default function Dashboard() {
     }
   };
 
-  const handleLogout = () => {
-    setToken('');
-    setJobs([]);
-    setCandidates([]);
-    localStorage.removeItem('token');
-  };
-
   if (!token) {
     return (
-      <div className="container" style={{ maxWidth: '400px', margin: '50px auto' }}>
+      <div style={{ maxWidth: '400px', margin: '60px auto' }}>
         <div className="card">
-          <h2>Login - Dashboard RH</h2>
+          <h2 style={{ marginBottom: '20px' }}>Login</h2>
           {error && <div className="error">{error}</div>}
           <form onSubmit={handleLogin}>
             <input
               type="email"
-              placeholder="Email"
+              placeholder="Email da empresa"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               className="input"
@@ -125,17 +144,12 @@ export default function Dashboard() {
               className="input"
               required
             />
-            <button
-              type="submit"
-              disabled={loading}
-              className="button"
-              style={{ width: '100%' }}
-            >
+            <button type="submit" disabled={loading} className="button" style={{ width: '100%' }}>
               {loading ? 'Entrando...' : 'Entrar'}
             </button>
           </form>
-          <p style={{ marginTop: '20px', fontSize: '12px', color: '#666' }}>
-            Use os dados da empresa que você registrou.
+          <p style={{ marginTop: '20px', fontSize: '12px', color: '#64748b', textAlign: 'center' }}>
+            💡 Registre sua empresa na página de Testes da API
           </p>
         </div>
       </div>
@@ -143,15 +157,27 @@ export default function Dashboard() {
   }
 
   return (
-    <div className="container">
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '30px' }}>
+    <div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', margin: '20px 0 40px 0' }}>
         <h2>Dashboard RH</h2>
-        <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
-          {dataLoading && <span style={{ fontSize: '13px', color: '#666' }}>Atualizando...</span>}
-          <button onClick={() => loadData(token)} className="button" style={{ background: '#6b7280' }}>
+        <div style={{ display: 'flex', gap: '10px' }}>
+          <button
+            onClick={() => loadData(token)}
+            className="button"
+            style={{ background: '#6b7280' }}
+          >
             Atualizar
           </button>
-          <button onClick={handleLogout} className="button" style={{ background: '#dc2626' }}>
+          <button
+            onClick={() => {
+              setToken('');
+              setJobs([]);
+              setCandidates([]);
+              localStorage.removeItem('token');
+            }}
+            className="button"
+            style={{ background: '#dc2626' }}
+          >
             Sair
           </button>
         </div>
@@ -159,51 +185,51 @@ export default function Dashboard() {
 
       {error && <div className="error">{error}</div>}
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px', marginBottom: '30px' }}>
+      <div className="grid" style={{ marginBottom: '40px' }}>
         <div className="card">
-          <h3>Nova Vaga</h3>
+          <h3 style={{ marginBottom: '16px' }}>➕ Nova Vaga</h3>
           <form onSubmit={handleCreateJob}>
             <input
               type="text"
               placeholder="Título da vaga"
-              value={newJob.title}
-              onChange={(e) => setNewJob({ ...newJob, title: e.target.value })}
+              value={formData.title}
+              onChange={(e) => setFormData({ ...formData, title: e.target.value })}
               className="input"
               required
             />
             <textarea
               placeholder="Descrição"
-              value={newJob.description}
-              onChange={(e) => setNewJob({ ...newJob, description: e.target.value })}
+              value={formData.description}
+              onChange={(e) => setFormData({ ...formData, description: e.target.value })}
               className="input"
-              style={{ minHeight: '80px' }}
+              style={{ minHeight: '100px' }}
               required
             />
             <input
               type="text"
               placeholder="Requisitos"
-              value={newJob.requirements}
-              onChange={(e) => setNewJob({ ...newJob, requirements: e.target.value })}
+              value={formData.requirements}
+              onChange={(e) => setFormData({ ...formData, requirements: e.target.value })}
               className="input"
               required
             />
             <input
               type="text"
-              placeholder="Salário (ex: R$ 3.000 - R$ 5.000)"
-              value={newJob.salary}
-              onChange={(e) => setNewJob({ ...newJob, salary: e.target.value })}
+              placeholder="Localização (ex: São Paulo, SP)"
+              value={formData.location}
+              onChange={(e) => setFormData({ ...formData, location: e.target.value })}
               className="input"
             />
             <input
               type="text"
-              placeholder="Localização (ex: São Paulo, SP)"
-              value={newJob.location}
-              onChange={(e) => setNewJob({ ...newJob, location: e.target.value })}
+              placeholder="Salário (ex: R$ 3.000 - R$ 5.000)"
+              value={formData.salary}
+              onChange={(e) => setFormData({ ...formData, salary: e.target.value })}
               className="input"
             />
             <select
-              value={newJob.modality}
-              onChange={(e) => setNewJob({ ...newJob, modality: e.target.value })}
+              value={formData.modality}
+              onChange={(e) => setFormData({ ...formData, modality: e.target.value })}
               className="input"
             >
               <option value="PRESENCIAL">Presencial</option>
@@ -217,19 +243,19 @@ export default function Dashboard() {
         </div>
 
         <div className="card">
-          <h3>Vagas ({jobs.length})</h3>
+          <h3 style={{ marginBottom: '16px' }}>📋 Vagas ({jobs.length})</h3>
           {jobs.length === 0 ? (
-            <p style={{ color: '#999' }}>Nenhuma vaga criada ainda</p>
+            <p style={{ color: '#64748b' }}>Nenhuma vaga criada ainda</p>
           ) : (
             jobs.map((job) => (
-              <div key={job.id} style={{ padding: '10px', borderBottom: '1px solid #eee', fontSize: '14px' }}>
-                <strong>{job.title}</strong>
-                <p style={{ margin: '4px 0', color: '#666', fontSize: '12px' }}>
+              <div key={job.id} style={{ paddingBottom: '15px', marginBottom: '15px', borderBottom: '1px solid #e2e8f0' }}>
+                <h4 style={{ margin: '0 0 4px 0' }}>{job.title}</h4>
+                <p style={{ color: '#64748b', fontSize: '12px', margin: '0 0 4px 0' }}>
                   {job.modality} {job.location ? `· ${job.location}` : ''}
                 </p>
-                <p style={{ margin: '4px 0', color: '#2563eb', fontSize: '12px' }}>
+                <span className="badge badge-info" style={{ fontSize: '11px' }}>
                   {job._count?.candidates || 0} candidato(s)
-                </p>
+                </span>
               </div>
             ))
           )}
@@ -237,52 +263,40 @@ export default function Dashboard() {
       </div>
 
       <div className="card">
-        <h3>Candidatos ({candidates.length})</h3>
+        <h3 style={{ marginBottom: '16px' }}>👥 Candidatos ({candidates.length})</h3>
         {candidates.length === 0 ? (
-          <p style={{ color: '#999' }}>Nenhum candidato ainda</p>
+          <p style={{ color: '#64748b' }}>Nenhum candidato ainda</p>
         ) : (
           <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', fontSize: '14px', borderCollapse: 'collapse' }}>
+            <table>
               <thead>
-                <tr style={{ borderBottom: '2px solid #ddd' }}>
-                  <th style={{ textAlign: 'left', padding: '10px' }}>Nome</th>
-                  <th style={{ textAlign: 'left', padding: '10px' }}>Email</th>
-                  <th style={{ textAlign: 'left', padding: '10px' }}>Vaga</th>
-                  <th style={{ textAlign: 'left', padding: '10px' }}>Status</th>
+                <tr>
+                  <th>Nome</th>
+                  <th>Email</th>
+                  <th>Vaga</th>
+                  <th>Status</th>
                 </tr>
               </thead>
               <tbody>
-                {candidates.map((c) => {
-                  const cfg = STATUS_CONFIG[c.status] || STATUS_CONFIG.RECEBIDO;
-                  return (
-                    <tr key={c.id} style={{ borderBottom: '1px solid #eee' }}>
-                      <td style={{ padding: '10px' }}>{c.name}</td>
-                      <td style={{ padding: '10px' }}>{c.email}</td>
-                      <td style={{ padding: '10px', color: '#666', fontSize: '12px' }}>
-                        {c.job?.title || '-'}
-                      </td>
-                      <td style={{ padding: '10px' }}>
-                        <select
-                          value={c.status}
-                          onChange={(e) => handleStatusChange(c.id, e.target.value)}
-                          style={{
-                            background: cfg.bg,
-                            color: cfg.color,
-                            border: 'none',
-                            borderRadius: '4px',
-                            padding: '4px 8px',
-                            fontSize: '12px',
-                            cursor: 'pointer',
-                          }}
-                        >
-                          {Object.keys(STATUS_CONFIG).map((s) => (
-                            <option key={s} value={s}>{s.replace('_', ' ')}</option>
-                          ))}
-                        </select>
-                      </td>
-                    </tr>
-                  );
-                })}
+                {candidates.map((c) => (
+                  <tr key={c.id}>
+                    <td>{c.name}</td>
+                    <td style={{ fontSize: '12px' }}>{c.email}</td>
+                    <td style={{ fontSize: '12px', color: '#64748b' }}>{c.job?.title || '-'}</td>
+                    <td>
+                      <select
+                        value={c.status}
+                        onChange={(e) => handleStatusChange(c.id, e.target.value)}
+                        className={STATUS_BADGE[c.status] || 'badge badge-info'}
+                        style={{ border: 'none', cursor: 'pointer', fontWeight: '600' }}
+                      >
+                        {Object.keys(STATUS_BADGE).map((s) => (
+                          <option key={s} value={s}>{s.replace('_', ' ')}</option>
+                        ))}
+                      </select>
+                    </td>
+                  </tr>
+                ))}
               </tbody>
             </table>
           </div>

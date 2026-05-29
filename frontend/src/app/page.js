@@ -4,62 +4,72 @@ import { useState, useEffect } from 'react';
 import Link from 'next/link';
 
 export default function Home() {
-  const [apiStatus, setApiStatus] = useState('verificando...');
+  const [backendStatus, setBackendStatus] = useState('verificando...');
+  const [dbStatus, setDbStatus] = useState('verificando...');
 
   useEffect(() => {
     const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000/api';
     fetch(`${apiUrl}/health`)
       .then((r) => r.json())
-      .then((d) => setApiStatus(d.status === 'ok' ? 'Online' : 'Degradado'))
-      .catch(() => setApiStatus('Offline'));
+      .then((d) => {
+        setBackendStatus(d.status === 'ok' ? 'Online' : 'Degradado');
+        setDbStatus(d.database === 'connected' ? 'Conectado' : 'Desconectado');
+      })
+      .catch(() => {
+        setBackendStatus('Offline');
+        setDbStatus('Offline');
+      });
   }, []);
 
+  const statusBadge = (s) => {
+    if (s === 'verificando...') return 'badge badge-info';
+    if (s === 'Online' || s === 'Conectado') return 'badge badge-success';
+    return 'badge badge-error';
+  };
+
   return (
-    <div className="container">
-      <div style={{ textAlign: 'center', margin: '40px 0' }}>
-        <h2>Bem-vindo ao sNowRecruiter</h2>
-        <p style={{ color: '#666', marginBottom: '30px' }}>
-          MicroSaaS de Recrutamento e Seleção
-        </p>
+    <>
+      <div className="hero">
+        <h2>Recrutamento Inteligente</h2>
+        <p>Plataforma completa para gerenciar vagas e candidatos</p>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '20px' }}>
-        <div className="card">
-          <h3>Para RHs</h3>
-          <p>Gerencie vagas e candidatos em um só lugar.</p>
-          <Link href="/dashboard">
-            <button className="button" style={{ width: '100%' }}>
-              Ir para Dashboard
-            </button>
-          </Link>
+      <div className="grid" style={{ marginBottom: '60px' }}>
+        <Link href="/dashboard" style={{ textDecoration: 'none' }}>
+          <div className="card" style={{ cursor: 'pointer', textAlign: 'center' }}>
+            <h3 style={{ marginBottom: '10px' }}>📊 Dashboard RH</h3>
+            <p style={{ color: '#64748b', marginBottom: '20px' }}>
+              Acesse o painel para gerenciar vagas e candidatos
+            </p>
+            <button className="button">Entrar</button>
+          </div>
+        </Link>
+
+        <div className="card" style={{ textAlign: 'center' }}>
+          <h3 style={{ marginBottom: '10px' }}>🚀 Status</h3>
+          <div style={{ marginBottom: '20px' }}>
+            <div style={{ marginBottom: '10px' }}>
+              <span className={statusBadge(backendStatus)}>Backend: {backendStatus}</span>
+            </div>
+            <div>
+              <span className={statusBadge(dbStatus)}>Database: {dbStatus}</span>
+            </div>
+          </div>
+          <p style={{ color: '#64748b', fontSize: '12px' }}>
+            {backendStatus === 'Online' ? 'Tudo pronto para produção!' : 'Verifique a conexão com o backend.'}
+          </p>
         </div>
 
-        <div className="card">
-          <h3>Testes da API</h3>
-          <p>Teste os endpoints disponíveis.</p>
-          <Link href="/admin">
-            <button className="button" style={{ width: '100%' }}>
-              Abrir Testes
-            </button>
-          </Link>
-        </div>
-
-        <div className="card">
-          <h3>Status</h3>
-          <p>
-            Backend:{' '}
-            <span style={{
-              color: apiStatus === 'Online' ? '#059669' : apiStatus === 'Offline' ? '#dc2626' : '#d97706',
-              fontWeight: 'bold',
-            }}>
-              {apiStatus}
-            </span>
+        <div className="card" style={{ textAlign: 'center' }}>
+          <h3 style={{ marginBottom: '10px' }}>⚡ Rápido & Escalável</h3>
+          <p style={{ color: '#64748b', marginBottom: '20px' }}>
+            Construído com tecnologias modernas e em produção
           </p>
-          <p style={{ fontSize: '12px', color: '#666', marginTop: '8px' }}>
-            API: {process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000/api'}
-          </p>
+          <div style={{ fontSize: '12px', color: '#64748b' }}>
+            Next.js • Express • PostgreSQL
+          </div>
         </div>
       </div>
-    </div>
+    </>
   );
 }
